@@ -61,6 +61,11 @@ def api(method, path, quiet=False, **params):
             return json.load(r)
     except urllib.error.HTTPError as e:
         if quiet:
+            try:
+                msg = json.loads(e.read()).get("error", {}).get("message", "")
+            except Exception:
+                msg = ""
+            print(f"    ({path}: {e.code} {msg[:160]})")
             return None
         die(f"Instagram API {method} {path} failed ({e.code}): {e.read().decode(errors='replace')}")
 
