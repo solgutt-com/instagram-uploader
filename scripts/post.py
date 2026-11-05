@@ -43,12 +43,16 @@ def die(msg):
     sys.exit(1)
 
 
+def token():
+    return os.environ.get("IG_ACCESS_TOKEN", "").strip().strip('"').strip("'").strip()
+
+
 def instagram_login_token():
-    return os.environ.get("IG_ACCESS_TOKEN", "").startswith("IG")
+    return token().startswith("IG")
 
 
 def api(method, path, quiet=False, **params):
-    params["access_token"] = os.environ["IG_ACCESS_TOKEN"]
+    params["access_token"] = token()
     data = urllib.parse.urlencode(params).encode()
     host = "graph.instagram.com" if instagram_login_token() else "graph.facebook.com"
     url = f"https://{host}/{VERSION}/{path}"
@@ -171,7 +175,10 @@ def main():
     print(f"Image: {url}\nCaption:\n{caption}\n")
     check_public(url)
 
-    if not os.environ.get("IG_ACCESS_TOKEN"):
+    t = token()
+    print(f"Token check: {len(t)} characters, starts with {t[:3]!r}"
+          + (", contains spaces/line breaks" if any(c.isspace() for c in t) else ""))
+    if not t:
         # Not set up yet: warn instead of failing, so GitHub doesn't email a failure every hour.
         print("::warning::IG_ACCESS_TOKEN secret isn't set yet – nothing posted. See SETUP.md.")
         return
