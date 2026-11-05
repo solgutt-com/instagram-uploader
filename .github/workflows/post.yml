@@ -1,0 +1,49 @@
+name: Post to Instagram
+
+on:
+  schedule:
+    - cron: "7 * * * *"      # every hour at :07 – post.py decides whether a posting time is due
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Post the next photo right now"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Dry run (check everything, publish nothing)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: instagram-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Post next photo if due
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          FORCE: ${{ inputs.force }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: python3 scripts/post.py
+
+      - name: Move posted photo out of the queue
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then exit 0; fi
+          git config user.name "instagram-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A queue posted state.json
+          git commit -q -m "Posted $(tail -n1 posted/log.csv | cut -d, -f2)"
+          for i in 1 2 3 4 5; do
+            git pull -q --rebase && git push -q && exit 0
+            sleep 5
+          done
+          echo "::error::Couldn't push the queue update"; exit 1

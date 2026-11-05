@@ -1,0 +1,20 @@
+{
+  "timezone": "Asia/Jerusalem",
+  "post_times": ["09:00", "19:00"],
+
+  "caption": {
+    "lines": ["{date}", "{location}", "{camera}"],
+    "date_format": "%B %-d, %Y · %-I:%M %p",
+    "camera_format": "{model} · {focal} · {aperture} · {shutter} · ISO {iso}",
+    "location_lookup": true
+  },
+
+  "image": {
+    "max_width": 1440,
+    "too_tall_or_wide": "pad",
+    "pad_color": "#ffffff",
+    "jpeg_quality": 92
+  },
+
+  "graph_api_version": "v24.0"
+}

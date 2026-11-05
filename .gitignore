@@ -1,0 +1,5 @@
+originals/
+logs/
+.sync.lock/
+.DS_Store
+__pycache__/
