@@ -106,15 +106,18 @@ def main():
     print(f"Image: {url}\nCaption:\n{caption}\n")
     check_public(url)
 
-    if DRY_RUN:
-        print("DRY RUN – stopping before publishing. Nothing was posted or moved.")
-        return
-
     if not os.environ.get("IG_ACCESS_TOKEN"):
         # Not set up yet: warn instead of failing, so GitHub doesn't email a failure every hour.
         print("::warning::IG_ACCESS_TOKEN secret isn't set yet – nothing posted. See SETUP.md.")
         return
-    user_id = api("GET", "me", fields="user_id,username")["user_id"]
+    me = api("GET", "me", fields="user_id,username")
+    user_id = me["user_id"]
+    print(f"Token OK – connected to @{me.get('username')}")
+
+    if DRY_RUN:
+        print("DRY RUN – stopping before publishing. Nothing was posted or moved.")
+        return
+
     container = api("POST", f"{user_id}/media", image_url=url, caption=caption)["id"]
 
     for _ in range(30):
