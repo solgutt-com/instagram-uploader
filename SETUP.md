@@ -1,55 +1,44 @@
-# One-time setup
+# One-time setup (already done for @sol_gutt_foto)
 
-About 20 minutes. Meta moves its buttons around now and then, so labels may differ a little.
+This is the route that worked in November 2026. Meta changes its screens often.
 
-## 1. Make your Instagram a Creator account
+## 1. Professional account
+**@sol_gutt_foto** must be a **Creator** or **Business** account: Instagram app → Settings → Account type and tools.
 
-Instagram app → **Settings and activity → Account type and tools → Switch to professional account → Creator.**
+## 2. Meta app
+At developers.facebook.com there's an app called **SolGutt uploader**. Its use case is *Manage messaging & content on Instagram*, it's linked to a business portfolio, and it has a Unified-login configuration.
 
-It's free and reversible. Instagram only lets professional accounts post through its API.
+## 3. Token from a system user
+At [business.facebook.com/settings](https://business.facebook.com/settings), inside the business portfolio:
 
-## 2. Create a Meta developer app
+1. **Accounts → Instagram accounts:** add `sol_gutt_foto`.
+2. **Users → System users:** there's a system user named `uploader` (Admin).
+3. **Assign assets:**
+   - the app *SolGutt uploader*, with full control
+   - `sol_gutt_foto`, with full control
+4. **Generate token:**
+   - App: *SolGutt uploader*
+   - Expiration: **Never**
+   - Permissions: `instagram_basic` and `instagram_content_publish`
 
-1. Go to <https://developers.facebook.com/apps> and log in with Facebook. Accept the developer terms if this is your first time.
-2. **Create app**:
-   - Name it something like *solgutt uploader*.
-   - For the use case, pick **Manage messaging & content on Instagram**.
-   - Skip the business portfolio.
-   - Finish creating.
-3. In the app, open **Use cases → Customize** (next to the Instagram use case). Under **Permissions**, make sure **`instagram_business_content_publish`** is added, along with `instagram_business_basic`.
+   This gives a code starting with `EAA`. It never expires.
 
-The app can stay in **Development** mode. You don't need App Review to post to your own account.
+## 4. GitHub secrets
+Add these at [repo → Settings → Secrets and variables → Actions](https://github.com/solgutt-com/instagram-uploader/settings/secrets/actions):
 
-## 3. Generate the access token
+| Secret | Value |
+|---|---|
+| `IG_ACCESS_TOKEN` | the `EAA…` token |
+| `IG_USER_ID` | @sol_gutt_foto's ID (Business Settings → Instagram accounts → sol_gutt_foto). Usually starts with 1784. |
 
-1. Still in the Instagram use case, open **API setup with Instagram login → Generate access tokens → Add account.** Log in to your Instagram account.
-   - If it asks for a tester role: go to **App roles → Roles → Add people → Instagram Tester** and enter your username. Then accept the invite in the Instagram app: **Settings → Website permissions → Apps and websites → Tester invites**.
-2. Click **Generate token** and copy it. It's a long string starting with `IG…`.
+Use the website form rather than the `gh secret set` command. With the command, it's easy to end up pasting the command itself instead of the token.
 
-## 4. Store the token in GitHub
+`config.json` has `"instagram_username": "sol_gutt_foto"`. If a token ever reaches a different account, the uploader refuses to post.
 
-Repo on GitHub → **Settings → Secrets and variables → Actions → New repository secret**
+## 5. Test
+GitHub → **Actions → Post to Instagram → Run workflow**, with **dry run** ticked.
 
-- Name: `IG_ACCESS_TOKEN`
-- Value: paste the token.
+The log should say `Token OK – connected to @sol_gutt_foto` and show the caption it would post.
 
-## 5. Let the token renew itself
-
-Instagram tokens expire after 60 days. The weekly refresh job renews them, but it needs permission to update the secret:
-
-1. Go to <https://github.com/settings/personal-access-tokens/new> and create a **fine-grained token**:
-   - Repository access: **Only select repositories →** `instagram-uploader`
-   - Permissions: **Secrets → Read and write**
-   - Expiration: the longest allowed. GitHub emails you before it expires.
-2. Add it as a second repository secret named **`GH_PAT`**.
-
-If you skip this step, everything still works, but you'll have to repeat step 3 every ~60 days.
-
-## 6. Test it
-
-GitHub → **Actions → Post to Instagram → Run workflow.**
-
-1. Leave **dry run** ticked and run it. The log shows which photo and caption would go out, and confirms Instagram can reach the image.
-2. When that looks right, run it again with **force** ticked and **dry run** unticked. This posts the next photo for real.
-
-From then on it runs by itself. GitHub emails you if a run ever fails, for example when the token expires.
+## If the token is ever revoked
+Generate a new one as in step 3, then update `IG_ACCESS_TOKEN`. The weekly *Refresh Instagram token* job does nothing for this kind of token, which is expected.
