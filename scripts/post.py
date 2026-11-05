@@ -19,6 +19,7 @@ Environment:
 import csv
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.error
@@ -154,6 +155,14 @@ def main():
     state = json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
 
     slot = due_slot(now, state)
+    if "--due" in sys.argv:
+        # used by the Mac watcher: print the due slot if a photo should go out now
+        has_photos = any(p.suffix.lower() in (".jpg", ".jpeg") for p in QUEUE.iterdir())
+        if slot and has_photos:
+            print(slot.isoformat())
+            return
+        sys.exit(1)
+
     if not slot and not FORCE:
         print(f"{now:%H:%M} – nothing due (times: {', '.join(CONFIG['post_times'])}).")
         return
@@ -168,7 +177,10 @@ def main():
     if len(caption) > 2200:
         die(f"{txt.name} is {len(caption)} characters; Instagram allows 2,200.")
 
-    repo, sha = os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_SHA"]
+    # the commit actually checked out (the workflow checks out the latest main)
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
+                         text=True).stdout.strip() or os.environ["GITHUB_SHA"]
+    repo = os.environ["GITHUB_REPOSITORY"]
     url = (f"https://raw.githubusercontent.com/{repo}/{sha}/"
            f"{urllib.parse.quote(photo.relative_to(ROOT).as_posix())}")
     print(f"Posting {photo.name}  ({len(photos) - 1} left after this)")

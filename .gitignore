@@ -3,3 +3,4 @@ logs/
 .sync.lock/
 .DS_Store
 __pycache__/
+.last_trigger

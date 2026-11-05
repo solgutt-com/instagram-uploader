@@ -39,4 +39,19 @@ if git remote get-url origin >/dev/null 2>&1; then
     exit 1
   fi
   git push -q 2>/dev/null || git push -q -u origin main || echo "[$(date '+%F %T')] ERROR: push failed"
+
+  # Backup trigger for GitHub's unreliable hourly timer: if a posting time has
+  # passed and the photo hasn't gone out, start the posting workflow now.
+  # Started at most once per slot every 20 minutes.
+  if slot=$("$PYTHON" scripts/post.py --due 2>/dev/null); then
+    last=$(cat .last_trigger 2>/dev/null)
+    if [ "$last" != "$slot" ] || [ -n "$(find .last_trigger -mmin +20 2>/dev/null)" ]; then
+      if gh workflow run post.yml >/dev/null 2>&1; then
+        echo "$slot" > .last_trigger
+        echo "[$(date '+%F %T')] started posting workflow for $slot"
+      else
+        echo "[$(date '+%F %T')] ERROR: couldn't start the posting workflow (gh)"
+      fi
+    fi
+  fi
 fi
