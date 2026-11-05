@@ -70,21 +70,49 @@ def find_account():
     if instagram_login_token():
         me = api("GET", "me", fields="user_id,username")
         return me["user_id"], me.get("username")
+    want = CONFIG.get("instagram_username", "").lower().lstrip("@")
     uid = os.environ.get("IG_USER_ID", "").strip()
-    if not uid:
-        # system-user / Facebook-login token: look for the Instagram account it can manage
-        found = []
-        for edge in ("me/accounts", "me/assigned_pages"):
-            res = api("GET", edge, quiet=True, fields="instagram_business_account{id,username}") or {}
-            found += [p["instagram_business_account"] for p in res.get("data", [])
-                      if "instagram_business_account" in p]
-        found = list({a["id"]: a for a in found}.values())
-        if len(found) != 1:
-            die("Couldn't work out which Instagram account to post to. Add your Instagram "
-                "account ID as a repository secret named IG_USER_ID (see SETUP.md).")
-        return found[0]["id"], found[0].get("username")
-    info = api("GET", uid, fields="username")
-    return uid, info.get("username")
+    if uid:
+        info = api("GET", uid, fields="username")
+        return uid, info.get("username")
+
+    # System-user token: search every place Meta might list the Instagram account.
+    found = {}
+
+    def collect(label, path, fields, pick=lambda item: item):
+        res = api("GET", path, quiet=True, fields=fields)
+        if res is None:
+            print(f"  lookup {label}: not available")
+            return
+        items = [pick(i) for i in res.get("data", [])]
+        items = [i for i in items if i and i.get("id")]
+        print(f"  lookup {label}: {len(items)} found")
+        for i in items:
+            found.setdefault(i["id"], i)
+
+    ig = "instagram_business_account{id,username}"
+    collect("pages", "me/accounts", ig, lambda p: p.get("instagram_business_account"))
+    collect("assigned pages", "me/assigned_pages", ig, lambda p: p.get("instagram_business_account"))
+    businesses = [CONFIG["meta_business_id"]] if CONFIG.get("meta_business_id") else []
+    res = api("GET", "me/businesses", quiet=True, fields="id") or {}
+    businesses += [b["id"] for b in res.get("data", []) if b["id"] not in businesses]
+    for biz in businesses:
+        for edge in ("instagram_business_accounts", "owned_instagram_accounts", "instagram_accounts"):
+            collect(f"business {edge}", f"{biz}/{edge}", "id,username")
+
+    # keep only IDs that work as Instagram accounts we can publish to
+    usable = []
+    for i in found.values():
+        info = api("GET", i["id"], quiet=True, fields="id,username")
+        if info and info.get("username"):
+            usable.append(info)
+    print("  usable accounts: " + (", ".join(f"@{a['username']} ({a['id']})" for a in usable) or "none"))
+    if want:
+        usable = [a for a in usable if a["username"].lower() == want]
+    if len(usable) != 1:
+        die("Couldn't work out which Instagram account to post to. Add your Instagram "
+            "account ID as a repository secret named IG_USER_ID (see SETUP.md).")
+    return usable[0]["id"], usable[0]["username"]
 
 
 def due_slot(now, state):
@@ -144,6 +172,9 @@ def main():
         return
     user_id, username = find_account()
     print(f"Token OK – connected to @{username} (account {user_id})")
+    want = CONFIG.get("instagram_username", "").lower().lstrip("@")
+    if want and (username or "").lower() != want:
+        die(f"Token reaches @{username}, but config.json says to post to @{want}. Stopping.")
 
     if DRY_RUN:
         print("DRY RUN – stopping before publishing. Nothing was posted or moved.")
