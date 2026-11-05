@@ -18,6 +18,11 @@ jobs:
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
+          if [ -z "$IG_ACCESS_TOKEN" ]; then echo "No token set yet – nothing to refresh."; exit 0; fi
+          case "$IG_ACCESS_TOKEN" in
+            IG*) ;;
+            *) echo "System-user token – it never expires, nothing to refresh."; exit 0 ;;
+          esac
           if [ -z "$GH_TOKEN" ]; then
             echo "::error::GH_PAT secret missing – token can't be auto-refreshed. See SETUP.md."; exit 1
           fi

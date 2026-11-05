@@ -9,7 +9,10 @@ order) is posted with its .txt as the caption, then moved to posted/.
 At most one photo is posted per run, so a missed slot never causes a burst.
 
 Environment:
-  IG_ACCESS_TOKEN   Instagram API token (GitHub secret)
+  IG_ACCESS_TOKEN   Instagram API token (GitHub secret). Either an "IG…" token
+                    (Instagram login) or a Meta system-user token (Unified login).
+  IG_USER_ID        Instagram account ID – only needed with a system-user token,
+                    and only if it can't be found automatically.
   FORCE=true        post now even if no slot is due
   DRY_RUN=true      do everything except actually publishing
 """
@@ -29,7 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 QUEUE, POSTED = ROOT / "queue", ROOT / "posted"
 STATE_FILE = ROOT / "state.json"
 CONFIG = json.loads((ROOT / "config.json").read_text())
-API = f"https://graph.instagram.com/{CONFIG.get('graph_api_version', 'v24.0')}"
+VERSION = CONFIG.get("graph_api_version", "v24.0")
 
 FORCE = os.environ.get("FORCE", "").lower() == "true"
 DRY_RUN = os.environ.get("DRY_RUN", "").lower() == "true"
@@ -40,10 +43,15 @@ def die(msg):
     sys.exit(1)
 
 
-def api(method, path, **params):
+def instagram_login_token():
+    return os.environ.get("IG_ACCESS_TOKEN", "").startswith("IG")
+
+
+def api(method, path, quiet=False, **params):
     params["access_token"] = os.environ["IG_ACCESS_TOKEN"]
     data = urllib.parse.urlencode(params).encode()
-    url = f"{API}/{path}"
+    host = "graph.instagram.com" if instagram_login_token() else "graph.facebook.com"
+    url = f"https://{host}/{VERSION}/{path}"
     if method == "GET":
         req = urllib.request.Request(f"{url}?{data.decode()}")
     else:
@@ -52,7 +60,31 @@ def api(method, path, **params):
         with urllib.request.urlopen(req, timeout=60) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
+        if quiet:
+            return None
         die(f"Instagram API {method} {path} failed ({e.code}): {e.read().decode(errors='replace')}")
+
+
+def find_account():
+    """Return (instagram account id, username) for the token."""
+    if instagram_login_token():
+        me = api("GET", "me", fields="user_id,username")
+        return me["user_id"], me.get("username")
+    uid = os.environ.get("IG_USER_ID", "").strip()
+    if not uid:
+        # system-user / Facebook-login token: look for the Instagram account it can manage
+        found = []
+        for edge in ("me/accounts", "me/assigned_pages"):
+            res = api("GET", edge, quiet=True, fields="instagram_business_account{id,username}") or {}
+            found += [p["instagram_business_account"] for p in res.get("data", [])
+                      if "instagram_business_account" in p]
+        found = list({a["id"]: a for a in found}.values())
+        if len(found) != 1:
+            die("Couldn't work out which Instagram account to post to. Add your Instagram "
+                "account ID as a repository secret named IG_USER_ID (see SETUP.md).")
+        return found[0]["id"], found[0].get("username")
+    info = api("GET", uid, fields="username")
+    return uid, info.get("username")
 
 
 def due_slot(now, state):
@@ -110,9 +142,8 @@ def main():
         # Not set up yet: warn instead of failing, so GitHub doesn't email a failure every hour.
         print("::warning::IG_ACCESS_TOKEN secret isn't set yet – nothing posted. See SETUP.md.")
         return
-    me = api("GET", "me", fields="user_id,username")
-    user_id = me["user_id"]
-    print(f"Token OK – connected to @{me.get('username')}")
+    user_id, username = find_account()
+    print(f"Token OK – connected to @{username} (account {user_id})")
 
     if DRY_RUN:
         print("DRY RUN – stopping before publishing. Nothing was posted or moved.")
