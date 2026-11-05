@@ -46,7 +46,7 @@ if git remote get-url origin >/dev/null 2>&1; then
   if slot=$("$PYTHON" scripts/post.py --due 2>/dev/null); then
     last=$(cat .last_trigger 2>/dev/null)
     if [ "$last" != "$slot" ] || [ -n "$(find .last_trigger -mmin +20 2>/dev/null)" ]; then
-      if gh workflow run post.yml >/dev/null 2>&1; then
+      if gh workflow run post.yml -f dry_run=false >/dev/null 2>&1; then
         echo "$slot" > .last_trigger
         echo "[$(date '+%F %T')] started posting workflow for $slot"
       else
