@@ -111,7 +111,9 @@ def main():
         return
 
     if not os.environ.get("IG_ACCESS_TOKEN"):
-        die("IG_ACCESS_TOKEN secret is missing – see SETUP.md.")
+        # Not set up yet: warn instead of failing, so GitHub doesn't email a failure every hour.
+        print("::warning::IG_ACCESS_TOKEN secret isn't set yet – nothing posted. See SETUP.md.")
+        return
     user_id = api("GET", "me", fields="user_id,username")["user_id"]
     container = api("POST", f"{user_id}/media", image_url=url, caption=caption)["id"]
 
