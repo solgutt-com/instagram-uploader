@@ -2,6 +2,10 @@
 
 Drop photos in a folder and they go out on Instagram by themselves, two a day by default.
 
+**The folder:** `~/Desktop/solgutt.github.io/instagram-uploader/queue/`
+
+This is its own repository, separate from the website. The website's `.gitignore` excludes it, so it never ends up on the site.
+
 ## Day to day
 
 1. **Drop photos into `queue/`.** Use finished exports, any size, JPEG/PNG/TIFF.
@@ -48,7 +52,7 @@ Caption settings only apply to photos added after the change. Posting times take
 
 ## How it works
 
-- **On this Mac:** a background watcher (`scripts/sync.sh`, installed by `scripts/install-watcher.sh`) runs whenever `queue/` changes, plus every 15 minutes as a backup. It prepares new photos, writes their captions, and syncs the folder with GitHub. Its log is `logs/watcher.log`.
+- **On this Mac:** a background watcher (`scripts/sync.sh`, installed by `scripts/install-watcher.sh`) runs whenever `queue/` changes, plus every 15 minutes as a backup. It prepares new photos, writes their captions, and syncs the folder with GitHub. Its log is `logs/watcher.log`. The watcher runs through a small helper app, "Instagram Uploader", because macOS only lets background jobs read the Desktop folder after you allow it once.
 - **On GitHub:** `.github/workflows/post.yml` runs every hour. When a posting time has passed, it posts the next photo through Instagram's official API and moves it to `posted/`. It runs even when your Mac is off.
   - Only photos that reached GitHub can post, so drop them in while online.
   - A post can land up to about 30 minutes after its set time, because GitHub's hourly runs often start late.
