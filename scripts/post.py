@@ -37,6 +37,7 @@ VERSION = CONFIG.get("graph_api_version", "v24.0")
 
 FORCE = os.environ.get("FORCE", "").lower() == "true"
 DRY_RUN = os.environ.get("DRY_RUN", "").lower() == "true"
+DIAGNOSE = os.environ.get("DIAGNOSE", "").lower() == "true"
 
 
 def die(msg):
@@ -149,7 +150,41 @@ def check_public(url):
         die(f"Photo URL returned {kind!r} instead of an image: {url}")
 
 
+def raw_call(path, version=None, **params):
+    """GET without dying; returns (status, short text) for the diagnostics."""
+    params["access_token"] = token()
+    host = "graph.instagram.com" if instagram_login_token() else "graph.facebook.com"
+    url = f"https://{host}/{version or VERSION}/{path}?{urllib.parse.urlencode(params)}"
+    try:
+        with urllib.request.urlopen(url, timeout=30) as r:
+            return r.status, r.read().decode()[:300]
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode(errors="replace")[:400]
+
+
+def diagnose():
+    t = token()
+    print(f"Token: {len(t)} characters, starts with {t[:3]!r}; API {VERSION}")
+    uid = os.environ.get("IG_USER_ID", "").strip()
+    checks = [
+        ("who the token belongs to", "me", {"fields": "id,name"}),
+        ("token permissions", "me/permissions", {}),
+        ("the app", "app", {"fields": "id,name"}),
+        ("the Instagram account", uid or "IG_USER_ID-missing", {"fields": "id,username"}),
+        ("Instagram publishing limit", f"{uid}/content_publishing_limit", {"fields": "quota_usage,config"}),
+    ]
+    for label, path, params in checks:
+        status, body = raw_call(path, **params)
+        body = body.replace(uid, "<ig-id>") if uid else body
+        print(f"\n[{'OK ' if status == 200 else 'BLOCKED' if 'blocked' in body.lower() else 'ERR'}] {label} ({status})\n    {body}")
+    # also try the newest API version, in case only this version is affected
+    status, body = raw_call("me", version="v25.0", fields="id")
+    print(f"\n[{'OK ' if status == 200 else 'ERR'}] same check on v25.0 ({status})\n    {body}")
+
+
 def main():
+    if DIAGNOSE:
+        return diagnose()
     tz = ZoneInfo(CONFIG["timezone"])
     now = datetime.now(tz)
     state = json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}

@@ -12,6 +12,10 @@ on:
         description: "Post the next photo right now"
         type: boolean
         default: false
+      diagnose:
+        description: "Diagnose only (check what Meta allows, post nothing)"
+        type: boolean
+        default: false
       dry_run:
         description: "Dry run (check everything, publish nothing)"
         type: boolean
@@ -39,6 +43,7 @@ jobs:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           FORCE: ${{ inputs.force }}
           DRY_RUN: ${{ inputs.dry_run }}
+          DIAGNOSE: ${{ inputs.diagnose }}
         run: python3 scripts/post.py
 
       - name: Move posted photo out of the queue
