@@ -46,10 +46,10 @@ if git remote get-url origin >/dev/null 2>&1; then
 
   # Backup trigger for GitHub's unreliable hourly timer: if a posting time has
   # passed and the photo hasn't gone out, start the posting workflow now.
-  # Started at most once per slot every 20 minutes.
+  # Started once per slot; GitHub's hourly schedule retries after that.
   if slot=$("$PYTHON" scripts/post.py --due 2>/dev/null); then
     last=$(cat .last_trigger 2>/dev/null)
-    if [ "$last" != "$slot" ] || [ -n "$(find .last_trigger -mmin +20 2>/dev/null)" ]; then
+    if [ "$last" != "$slot" ]; then
       if gh workflow run post.yml -f dry_run=false >/dev/null 2>&1; then
         echo "$slot" > .last_trigger
         echo "[$(date '+%F %T')] started posting workflow for $slot"
