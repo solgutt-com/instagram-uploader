@@ -43,10 +43,18 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
 done
 
 if [ -n "$(git status --porcelain -- queue)" ]; then
-  new=$(git status --porcelain -- queue | grep -ci '\.jpg"\?$')
   git add -A queue
-  if [ "$new" -gt 0 ]; then msg="Queue: $new photo(s) added/changed"; else msg="Queue: captions edited"; fi
-  git commit -q -m "$msg" && echo "[$(date '+%F %T')] committed: $msg"
+  # The repo is public: never upload a file prepare.py hasn't stripped of its
+  # metadata (a HEIC or RAW file, a failed photo, one still copying in).
+  "$PYTHON" scripts/prepare.py --unprepared | while IFS= read -r f; do
+    git reset -q -- "$f"
+    echo "[$(date '+%F %T')] not uploaded, not a prepared photo: $f"
+  done
+  if ! git diff --cached --quiet -- queue; then
+    new=$(git diff --cached --name-only -- queue | grep -ci '\.jpg"\?$')
+    if [ "$new" -gt 0 ]; then msg="Queue: $new photo(s) added/changed"; else msg="Queue: captions edited"; fi
+    git commit -q -m "$msg" && echo "[$(date '+%F %T')] committed: $msg"
+  fi
 fi
 
 if git remote get-url origin >/dev/null 2>&1; then

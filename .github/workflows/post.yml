@@ -38,6 +38,7 @@ jobs:
           ref: main          # latest state, so two queued runs can't post the same slot twice
 
       - name: Post next photo if due
+        id: post
         env:
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
@@ -47,14 +48,29 @@ jobs:
         run: python3 scripts/post.py
 
       - name: Move posted photo out of the queue
+        # also after a crash: a post that went live must leave the queue, or it posts again
+        if: always()
+        env:
+          FOLDER: ${{ steps.post.outputs.folder }}
         run: |
           if [ -z "$(git status --porcelain)" ]; then exit 0; fi
           git config user.name "instagram-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          msg="Posted $(tail -n1 posted/log.csv | cut -d, -f2)"
           git add -A queue posted state.json
-          git commit -q -m "Posted $(tail -n1 posted/log.csv | cut -d, -f2)"
+          git commit -q -m "$msg"
+          cp state.json posted/log.csv "$RUNNER_TEMP/"
           for i in 1 2 3 4 5; do
             git pull -q --rebase && git push -q && exit 0
+            # Usually a conflict: the Mac changed the folder that was just posted.
+            # Take GitHub's latest and make our change again on top of it.
+            git rebase --abort 2>/dev/null || true
+            git fetch -q origin main && git reset -q --hard origin/main || true
+            cp "$RUNNER_TEMP/state.json" state.json
+            cp "$RUNNER_TEMP/log.csv" posted/log.csv
+            [ -z "$FOLDER" ] || git rm -rq --ignore-unmatch -- "queue/$FOLDER"
+            git add state.json posted/log.csv
+            git commit -q -m "$msg" || true
             sleep 5
           done
           echo "::error::Couldn't push the queue update"; exit 1

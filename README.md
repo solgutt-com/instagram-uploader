@@ -56,7 +56,8 @@ When a photo lands in `queue/`, it's replaced by an Instagram-ready copy:
 - Resized to 1440 px wide.
 - **Carousels are always 3:2 landscape.** Portrait photos get white bars at the sides; nothing is cropped. Every slide gets the same shape, because Instagram crops all slides to the first one's shape. Each slide is rebuilt from your original, so moving photos around never pads anything twice.
 - A single-photo post keeps its own shape, between 4:5 and 1.91:1.
-- **All metadata removed**, so GPS coordinates never reach GitHub.
+- **All metadata removed**, so GPS coordinates never reach GitHub. Anything that couldn't be prepared (an iPhone HEIC, a RAW file, a broken photo) stays in `queue/` on this Mac and is never uploaded; `logs/watcher.log` says `not uploaded`. Export it as JPEG and drop it in again.
+- If a different photo already had the same file name, the new one is renamed `name-2`, so the two never get mixed up.
 
 Your untouched original is kept in `originals/`. That folder stays on this Mac and is never uploaded. Delete old ones whenever you like.
 

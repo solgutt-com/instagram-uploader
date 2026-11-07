@@ -258,11 +258,19 @@ def main():
     wait_until_ready(container, folder.name)
 
     media_id = api("POST", f"{user_id}/media_publish", creation_id=container)["id"]
-    permalink = api("GET", media_id, fields="permalink").get("permalink", "")
-    print(f"Posted: {permalink}")
 
-    # posted: remove it from the queue, keep a record
+    # It's live: take it out of the queue and mark the slot used before anything
+    # else can fail, so a retry never posts it a second time.
     shutil.rmtree(folder)
+    if slot:
+        state["last_slot"] = slot.isoformat()
+    STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
+    if os.environ.get("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+            f.write(f"folder={folder.name}\n")
+
+    permalink = (api("GET", media_id, quiet=True, fields="permalink") or {}).get("permalink", "")
+    print(f"Posted: {permalink or media_id}")
     POSTED.mkdir(exist_ok=True)
     log = POSTED / "log.csv"
     new = not log.exists()
@@ -272,10 +280,6 @@ def main():
             w.writerow(["posted_at", "file", "media_id", "permalink"])
         w.writerow([now.isoformat(timespec="minutes"),
                     f"{folder.name}: " + " + ".join(i.name for i in images), media_id, permalink])
-
-    if slot:
-        state["last_slot"] = slot.isoformat()
-    STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
 
     left = len(posts) - 1
     if left <= CONFIG.get("low_queue_posts", 2):

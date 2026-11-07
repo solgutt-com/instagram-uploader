@@ -356,7 +356,22 @@ def prepare(path, write_caption=True):
             upright = img
         out = fit_for_instagram(to_srgb(upright))
 
-    txt = path.with_suffix(".txt")
+    # Slides are rebuilt from their original, found by name. If another photo
+    # already used this name, this one becomes "name-2", so it never gets the other's.
+    ORIGINALS.mkdir(exist_ok=True)
+    name = strip_prefix(path.name)
+    base = stem = Path(name).stem
+    n = 1
+    while find_original(stem + path.suffix) or (ORIGINALS / (stem + path.suffix)).exists():
+        n += 1
+        stem = f"{base}-{n}"
+    dest = path.with_name(path.name[:len(path.name) - len(name)] + stem + ".jpg")
+    if dest.stem != path.stem:
+        log(f"  another photo was already called {name}: this one is now {dest.name}")
+
+    txt = dest.with_suffix(".txt")
+    if path.with_suffix(".txt").exists() and txt != path.with_suffix(".txt"):
+        path.with_suffix(".txt").rename(txt)
     if not write_caption:
         pass
     elif txt.exists():
@@ -365,13 +380,7 @@ def prepare(path, write_caption=True):
         txt.write_text("\n" + build_caption(meta) + "\n", encoding="utf-8")
         log(f"  wrote {txt.name}")
 
-    ORIGINALS.mkdir(exist_ok=True)
-    backup = ORIGINALS / re.sub(r"^\d+ ", "", path.name)
-    if backup.exists():
-        backup = ORIGINALS / f"{path.stem}-{int(time.time())}{path.suffix}"
-    shutil.move(str(path), backup)
-
-    dest = path.with_suffix(".jpg")
+    shutil.move(str(path), ORIGINALS / (stem + path.suffix))
     out.save(dest, "JPEG", quality=CONFIG["image"].get("jpeg_quality", 92),
              optimize=True, progressive=True, comment=MARKER)
     log(f"  ready: {dest.name} ({out.width}×{out.height})")
@@ -447,5 +456,18 @@ def main():
     return 3 if pending else 0
 
 
+def unprepared():
+    """Files in queue/ that must not be uploaded: anything that isn't a text file
+    or a photo this script prepared (those still carry GPS and other metadata)."""
+    return [p for p in sorted(QUEUE.rglob("*")) if p.is_file()
+            and p.name not in (".gitkeep", ".DS_Store") and p.suffix.lower() != ".txt"
+            and not is_prepared(p)]
+
+
 if __name__ == "__main__":
+    if "--unprepared" in sys.argv:
+        # used by sync.sh: one path per line, relative to the repo
+        for p in unprepared():
+            print(p.relative_to(ROOT))
+        sys.exit(0)
     sys.exit(main())
