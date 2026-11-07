@@ -25,6 +25,8 @@ from pathlib import Path
 
 from PIL import Image, ImageCms, ImageOps
 
+from common import JPG, loose_photos, natural_key
+
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE = ROOT / "queue"
 ORIGINALS = ROOT / "originals"
@@ -205,6 +207,27 @@ def fit_for_instagram(img):
     return img
 
 
+def pad_to_portrait(path):
+    """Carousel slides must share one shape (Instagram crops them all to the first
+    slide's), so every slide is padded to the same 4:5 frame."""
+    cfg = CONFIG["image"]
+    with Image.open(path) as img:
+        img.load()
+        w, h = img.size
+        if abs(w / h - MIN_RATIO) < 0.005:
+            return
+        if w / h > MIN_RATIO:      # wider than 4:5 -> bars top and bottom
+            canvas = Image.new("RGB", (w, round(w / MIN_RATIO)), cfg.get("pad_color", "#ffffff"))
+        else:
+            canvas = Image.new("RGB", (round(h * MIN_RATIO), h), cfg.get("pad_color", "#ffffff"))
+        canvas.paste(img.convert("RGB"), ((canvas.width - w) // 2, (canvas.height - h) // 2))
+    max_w = cfg.get("max_width", 1440)
+    if canvas.width > max_w:
+        canvas = canvas.resize((max_w, round(canvas.height * max_w / canvas.width)), Image.LANCZOS)
+    canvas.save(path, "JPEG", quality=cfg.get("jpeg_quality", 92), optimize=True,
+                progressive=True, comment=MARKER)
+
+
 def is_prepared(path):
     try:
         with Image.open(path) as im:
@@ -213,7 +236,7 @@ def is_prepared(path):
         return False
 
 
-def prepare(path):
+def prepare(path, write_caption=True):
     with Image.open(path) as img:
         img.load()
         meta = read_metadata(path, img)
@@ -223,14 +246,16 @@ def prepare(path):
         out = fit_for_instagram(to_srgb(upright))
 
     txt = path.with_suffix(".txt")
-    if txt.exists():
+    if not write_caption:
+        pass
+    elif txt.exists():
         log(f"  kept your existing {txt.name}")
     else:
         txt.write_text("\n" + build_caption(meta) + "\n", encoding="utf-8")
         log(f"  wrote {txt.name}")
 
     ORIGINALS.mkdir(exist_ok=True)
-    backup = ORIGINALS / path.name
+    backup = ORIGINALS / re.sub(r"^\d+ ", "", path.name)
     if backup.exists():
         backup = ORIGINALS / f"{path.stem}-{int(time.time())}{path.suffix}"
     shutil.move(str(path), backup)
@@ -238,13 +263,60 @@ def prepare(path):
     dest = path.with_suffix(".jpg")
     out.save(dest, "JPEG", quality=CONFIG["image"].get("jpeg_quality", 92),
              optimize=True, progressive=True, comment=MARKER)
+    if not write_caption:              # dropped into a post folder: it's a carousel slide
+        pad_to_portrait(dest)
     log(f"  ready: {dest.name} ({out.width}×{out.height})")
+
+
+# lines the uploader writes itself (date, camera, website, hashtags, spacers)
+AUTO_LINE = re.compile(r"^([A-Z][a-z]+ \d{1,2}, \d{4}.*|.*\s·\s.*|solgutt\.com.*|#.*|\u2800*)$")
+
+
+def group_into_posts():
+    """Bundle loose, prepared photos into post folders of `photos_per_post`."""
+    per_post = max(1, int(CONFIG.get("photos_per_post", 3)))
+    loose = [p for p in loose_photos(QUEUE) if is_prepared(p)]
+    numbers = [int(m.group(1)) for d in QUEUE.iterdir()
+               if d.is_dir() and (m := re.match(r"Post (\d+)$", d.name))]
+    nxt = max(numbers, default=0) + 1
+    while len(loose) >= per_post:
+        group, loose = loose[:per_post], loose[per_post:]
+        folder = QUEUE / f"Post {nxt:03d}"
+        nxt += 1
+        folder.mkdir()
+        texts = [(p.with_suffix(".txt").read_text(encoding="utf-8")
+                  if p.with_suffix(".txt").exists() else "") for p in group]
+        caption = texts[0].rstrip()
+        # keep anything you typed into the other photos' captions
+        extra = []
+        for t in texts[1:]:
+            for line in t.splitlines():
+                line = line.strip()
+                if line and not AUTO_LINE.match(line) and line not in caption and line not in extra:
+                    extra.append(line)
+        if extra:
+            caption = "\n".join(extra) + "\n" + caption.lstrip("\n")
+        (folder / "caption.txt").write_text(caption + "\n", encoding="utf-8")
+        for i, p in enumerate(group, 1):
+            dest = folder / f"{i} {p.name}"
+            p.rename(dest)
+            p.with_suffix(".txt").unlink(missing_ok=True)
+            if per_post > 1:
+                pad_to_portrait(dest)
+        log(f"Grouped into {folder.name}: " + ", ".join(p.name for p in group))
+    if loose:
+        log(f"{len(loose)} photo(s) waiting for {per_post - len(loose)} more to make a post")
 
 
 def main():
     QUEUE.mkdir(exist_ok=True)
     pending = False
-    for path in sorted(QUEUE.iterdir()):
+    # loose photos, plus photos dropped straight into a post folder
+    candidates = [(p, True) for p in sorted(QUEUE.iterdir())]
+    for d in sorted(QUEUE.iterdir()):
+        if d.is_dir() and not d.name.startswith("."):
+            candidates += [(p, False) for p in sorted(d.iterdir())]
+    for path, loose in candidates:
         if path.suffix.lower() not in IMAGE_EXTS or path.name.startswith("."):
             continue
         if is_prepared(path):
@@ -252,11 +324,13 @@ def main():
         if time.time() - path.stat().st_mtime < SETTLE_SECONDS:
             pending = True
             continue
-        log(f"New photo: {path.name}")
+        log(f"New photo: {path.relative_to(QUEUE)}")
         try:
-            prepare(path)
+            prepare(path, write_caption=loose)
         except Exception as e:
             log(f"  could not prepare {path.name}: {e}")
+    if not pending:
+        group_into_posts()
     return 3 if pending else 0
 
 

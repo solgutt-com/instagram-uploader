@@ -21,6 +21,20 @@ if ! mkdir .sync.lock 2>/dev/null; then
 fi
 trap 'rm -rf .sync.lock; exit 0' EXIT
 
+# Rebuild preview.html and warn (once a day) when the queue is running low.
+update_preview() {
+  status=$("$PYTHON" scripts/preview.py 2>>logs/watcher.log) || return
+  if echo "$status" | grep -q '"low": true'; then
+    today=$(date +%F)
+    if [ "$(cat .low_warned 2>/dev/null)" != "$today" ]; then
+      left=$(echo "$status" | sed -E 's/.*"posts_left": ([0-9]+).*/\1/')
+      osascript -e "display notification \"Only $left post(s) left – drop more photos into queue/\" with title \"Instagram queue running low\"" 2>/dev/null
+      echo "$today" > .low_warned
+      echo "[$(date '+%F %T')] low-queue warning: $left post(s) left"
+    fi
+  fi
+}
+
 # prepare.py exits 3 while files are still being copied in – wait and retry
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   "$PYTHON" scripts/prepare.py
@@ -40,6 +54,7 @@ if git remote get-url origin >/dev/null 2>&1; then
     git rebase --abort 2>/dev/null
     echo "[$(date '+%F %T')] ERROR: couldn't merge changes from GitHub – needs a look"
     osascript -e 'display notification "Couldn'\''t sync with GitHub – check logs/watcher.log" with title "Instagram uploader"' 2>/dev/null
+    update_preview
     exit 1
   fi
   git push -q 2>/dev/null || git push -q -u origin main || echo "[$(date '+%F %T')] ERROR: push failed"
@@ -59,3 +74,5 @@ if git remote get-url origin >/dev/null 2>&1; then
     fi
   fi
 fi
+
+update_preview

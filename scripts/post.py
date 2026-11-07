@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Post the next photo in queue/ to Instagram, when a posting time is due.
+"""Post the next post in queue/ to Instagram, when a posting time is due.
 
-Runs on GitHub Actions every hour. Uses only the Python standard library.
+Runs on GitHub Actions. Uses only the Python standard library.
 
 A "slot" is one of config.json's post_times on today's date. If a slot has
-passed and hasn't been used yet, the first photo in queue/ (alphabetical
-order) is posted with its .txt as the caption, then moved to posted/.
-At most one photo is posted per run, so a missed slot never causes a burst.
+passed and hasn't been used yet, the first post folder in queue/ (Finder
+order) is posted: one photo = a single post, 2–10 photos = a carousel, with
+its caption.txt plus the hashtags from config.json. The folder is then
+deleted and the post recorded in posted/log.csv. At most one post per run,
+so a missed slot never causes a burst.
 
 Environment:
   IG_ACCESS_TOKEN   Instagram API token (GitHub secret). Either an "IG…" token
@@ -19,6 +21,7 @@ Environment:
 import csv
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -28,6 +31,8 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+from common import due_slot as _due_slot, full_caption, loose_photos, queued_posts, read_caption
 
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE, POSTED = ROOT / "queue", ROOT / "posted"
@@ -127,16 +132,7 @@ def find_account():
 
 
 def due_slot(now, state):
-    """Latest of today's posting times that has passed and hasn't been used."""
-    last = state.get("last_slot")
-    last = datetime.fromisoformat(last) if last else None
-    due = []
-    for t in CONFIG["post_times"]:
-        hh, mm = (int(x) for x in t.split(":"))
-        slot = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-        if slot <= now and (last is None or slot > last):
-            due.append(slot)
-    return max(due) if due else None
+    return _due_slot(now, state, CONFIG)
 
 
 def check_public(url):
@@ -190,10 +186,10 @@ def main():
     state = json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
 
     slot = due_slot(now, state)
+    posts = queued_posts(QUEUE)
     if "--due" in sys.argv:
-        # used by the Mac watcher: print the due slot if a photo should go out now
-        has_photos = any(p.suffix.lower() in (".jpg", ".jpeg") for p in QUEUE.iterdir())
-        if slot and has_photos:
+        # used by the Mac watcher: print the due slot if a post should go out now
+        if slot and posts:
             print(slot.isoformat())
             return
         sys.exit(1)
@@ -202,25 +198,31 @@ def main():
         print(f"{now:%H:%M} – nothing due (times: {', '.join(CONFIG['post_times'])}).")
         return
 
-    photos = sorted(p for p in QUEUE.iterdir() if p.suffix.lower() in (".jpg", ".jpeg"))
-    if not photos:
-        print("Queue is empty – nothing to post.")
+    if not posts:
+        waiting = len(loose_photos(QUEUE))
+        print("::warning::Queue is empty – nothing to post."
+              + (f" {waiting} photo(s) are waiting for a full post." if waiting else ""))
         return
-    photo = photos[0]
-    txt = photo.with_suffix(".txt")
-    caption = txt.read_text(encoding="utf-8").strip() if txt.exists() else ""
+    folder, images = posts[0]
+    if len(images) > 10:
+        die(f"'{folder.name}' has {len(images)} photos; a carousel can have at most 10.")
+    caption = full_caption(read_caption(folder), CONFIG)
     if len(caption) > 2200:
-        die(f"{txt.name} is {len(caption)} characters; Instagram allows 2,200.")
+        die(f"The caption for '{folder.name}' is {len(caption)} characters; Instagram allows 2,200.")
 
     # the commit actually checked out (the workflow checks out the latest main)
     sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
                          text=True).stdout.strip() or os.environ["GITHUB_SHA"]
     repo = os.environ["GITHUB_REPOSITORY"]
-    url = (f"https://raw.githubusercontent.com/{repo}/{sha}/"
-           f"{urllib.parse.quote(photo.relative_to(ROOT).as_posix())}")
-    print(f"Posting {photo.name}  ({len(photos) - 1} left after this)")
-    print(f"Image: {url}\nCaption:\n{caption}\n")
-    check_public(url)
+    urls = [f"https://raw.githubusercontent.com/{repo}/{sha}/"
+            f"{urllib.parse.quote(img.relative_to(ROOT).as_posix())}" for img in images]
+    kind = "carousel of " + str(len(images)) if len(images) > 1 else "single photo"
+    print(f"Posting '{folder.name}' ({kind}) – {len(posts) - 1} post(s) left after this")
+    for img, url in zip(images, urls):
+        print(f"  {img.name}: {url}")
+    print(f"Caption:\n{caption}\n")
+    for url in urls:
+        check_public(url)
 
     t = token()
     print(f"Token check: {len(t)} characters, starts with {t[:3]!r}"
@@ -239,38 +241,52 @@ def main():
         print("DRY RUN – stopping before publishing. Nothing was posted or moved.")
         return
 
-    container = api("POST", f"{user_id}/media", image_url=url, caption=caption)["id"]
-
-    for _ in range(30):
-        status = api("GET", container, fields="status_code").get("status_code")
-        if status == "FINISHED":
-            break
-        if status in ("ERROR", "EXPIRED"):
-            die(f"Instagram couldn't process {photo.name} (status {status}).")
-        time.sleep(4)
+    if len(images) == 1:
+        container = api("POST", f"{user_id}/media", image_url=urls[0], caption=caption)["id"]
     else:
-        die("Instagram took too long to process the photo.")
+        children = []
+        for img, url in zip(images, urls):
+            child = api("POST", f"{user_id}/media", image_url=url, is_carousel_item="true")["id"]
+            wait_until_ready(child, img.name)
+            children.append(child)
+        container = api("POST", f"{user_id}/media", media_type="CAROUSEL",
+                        children=",".join(children), caption=caption)["id"]
+    wait_until_ready(container, folder.name)
 
     media_id = api("POST", f"{user_id}/media_publish", creation_id=container)["id"]
     permalink = api("GET", media_id, fields="permalink").get("permalink", "")
     print(f"Posted: {permalink}")
 
+    # posted: remove it from the queue, keep a record
+    shutil.rmtree(folder)
     POSTED.mkdir(exist_ok=True)
-    photo.rename(POSTED / photo.name)
-    if txt.exists():
-        txt.rename(POSTED / txt.name)
-
     log = POSTED / "log.csv"
     new = not log.exists()
     with log.open("a", newline="") as f:
         w = csv.writer(f)
         if new:
             w.writerow(["posted_at", "file", "media_id", "permalink"])
-        w.writerow([now.isoformat(timespec="minutes"), photo.name, media_id, permalink])
+        w.writerow([now.isoformat(timespec="minutes"),
+                    f"{folder.name}: " + " + ".join(i.name for i in images), media_id, permalink])
 
     if slot:
         state["last_slot"] = slot.isoformat()
     STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
+
+    left = len(posts) - 1
+    if left <= CONFIG.get("low_queue_posts", 2):
+        print(f"::warning::Only {left} post(s) left in the queue – add more photos.")
+
+
+def wait_until_ready(container, label):
+    for _ in range(30):
+        status = api("GET", container, fields="status_code").get("status_code")
+        if status == "FINISHED":
+            return
+        if status in ("ERROR", "EXPIRED"):
+            die(f"Instagram couldn't process {label} (status {status}).")
+        time.sleep(4)
+    die(f"Instagram took too long to process {label}.")
 
 
 if __name__ == "__main__":
