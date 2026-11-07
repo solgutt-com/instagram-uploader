@@ -15,6 +15,7 @@ This is its own repository, separate from the website. The website's `.gitignore
 
    May 23, 2026 · 10:17 AM
    Canon EOS 7D · 40mm · f/4.5 · 1/80s · ISO 160
+   solgutt.com
    ```
 
    A location line is added when the photo has GPS data or a location typed in Lightroom.
@@ -42,7 +43,7 @@ Your untouched original is kept in `originals/`. That folder stays on this Mac a
 |---|---|
 | `post_times` | When to post, in 24-hour time. `["09:00", "19:00"]` = 2 a day. Add or remove times to change how many posts go out each day. |
 | `timezone` | The time zone for those times. |
-| `caption.lines` | Which lines the auto caption has, in order. Remove `"{camera}"` to drop the camera line. |
+| `caption.lines` | Which lines the auto caption has, in order. Remove `"{camera}"` to drop the camera line. Plain text, like `"solgutt.com"`, goes in as written. |
 | `caption.date_format` | Date style. `%B %-d, %Y · %-I:%M %p` gives `May 23, 2026 · 10:17 AM`. |
 | `caption.camera_format` | Also accepts `{lens}`, e.g. `{model} · {lens} · {focal} · …` |
 | `image.too_tall_or_wide` | `"pad"` (white bars) or `"crop"`. |
