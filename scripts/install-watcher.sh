@@ -32,7 +32,9 @@ fi
 mkdir -p "$APPDIR"
 rm -rf "$APP"
 osacompile -o "$APP" \
-  -e "do shell script \"PYTHON=\" & quoted form of \"$PY\" & \" /bin/bash \" & quoted form of \"$REPO/scripts/sync.sh\""
+  -e "try" \
+  -e "do shell script \"PYTHON=\" & quoted form of \"$PY\" & \" /bin/bash \" & quoted form of \"$REPO/scripts/sync.sh\"" \
+  -e "end try"
 INFO="$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Delete :CFBundleIdentifier" "$INFO" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string $LABEL" "$INFO"

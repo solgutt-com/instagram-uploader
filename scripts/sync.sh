@@ -3,7 +3,11 @@
 # every 15 minutes as a backup. Prepares new photos, writes their captions,
 # and keeps the folder in sync with GitHub in both directions.
 set -u
-cd "$(dirname "$0")/.." || exit 1
+# Always exit 0: the helper app shows an (invisible) error dialog on any other
+# exit code and then stays stuck open, which silently stops the watcher.
+# Problems are written to logs/watcher.log instead.
+trap 'exit 0' EXIT
+cd "$(dirname "$0")/.." || exit 0
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 PYTHON="${PYTHON:-python3}"
 
@@ -15,7 +19,7 @@ if ! mkdir .sync.lock 2>/dev/null; then
   # stale lock (older than 10 min)? take it over
   if [ -n "$(find .sync.lock -maxdepth 0 -mmin +10 2>/dev/null)" ]; then rm -rf .sync.lock; mkdir .sync.lock; else exit 0; fi
 fi
-trap 'rm -rf .sync.lock' EXIT
+trap 'rm -rf .sync.lock; exit 0' EXIT
 
 # prepare.py exits 3 while files are still being copied in – wait and retry
 for _ in 1 2 3 4 5 6 7 8 9 10; do
