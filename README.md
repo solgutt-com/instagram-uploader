@@ -91,7 +91,12 @@ Caption settings only apply to photos added after the change. Hashtag and postin
 
 - **On this Mac:** a background watcher (`scripts/sync.sh`, installed by `scripts/install-watcher.sh`) runs whenever `queue/` changes, plus every 15 minutes as a backup. It prepares and groups new photos, syncs the folder with GitHub, rebuilds the preview and starts the posting job when a time is due. Its log is `logs/watcher.log`. It runs through a small helper app, "Instagram Uploader", because macOS only lets background jobs read the Desktop folder after you allow it once.
 - **On GitHub:** `.github/workflows/post.yml` posts through Instagram's official API, then deletes the folder.
-- **What starts the posting job:** the Mac watcher, GitHub's own timer (unreliable) and, once set up, cron-job.org, so it also posts when the Mac is off. See [SETUP.md](SETUP.md#7-posting-with-the-mac-off). It doesn't matter how many of them run: each time slot posts once.
+- **What starts the posting job:** three things, so a post goes out even if one fails:
+  1. **cron-job.org** at :02 and :32 past each posting hour. Works with the Mac off. See [SETUP.md](SETUP.md#7-posting-with-the-mac-off).
+  2. The **Mac watcher**, whenever the Mac is awake.
+  3. **GitHub's own timer**, which is unreliable on its own.
+
+  Each time slot posts once, whichever trigger gets there first. A missed slot is never made up on a later day; the queue just moves on.
 - Only photos that have reached GitHub can post, so drop them in while online.
 
 First-time setup: see [SETUP.md](SETUP.md).
@@ -107,4 +112,15 @@ tail -f logs/watcher.log                     # watch the background log
 bash scripts/install-watcher.sh --uninstall  # stop the watcher
 ```
 
-To check Meta's side, go to GitHub → **Actions → Post to Instagram → Run workflow**, tick **diagnose**, and run it. It reports what Meta is allowing and posts nothing.
+## When something goes wrong
+
+GitHub emails you when a posting run fails. You can read every run under **Actions → Post to Instagram**.
+
+| What you see | What it means |
+|---|---|
+| `API access blocked` | Meta has temporarily restricted the app. It happened once, on Nov 6–7 2026, and cleared by itself within a day, with nothing under Required actions. The next slot retries automatically. |
+| `Invalid OAuth access token` | The `IG_ACCESS_TOKEN` secret is wrong or was revoked. Generate a new one ([SETUP.md](SETUP.md#3-token-from-a-system-user) step 3). |
+| No posts and no runs | cron-job.org's GitHub key has probably expired. Renew it ([SETUP.md](SETUP.md#7-posting-with-the-mac-off) step 7). |
+| Captions not appearing in `queue/` | The Mac watcher isn't running. Check `logs/watcher.log`, then run `bash scripts/sync.sh` once, or reinstall the watcher. |
+
+To check Meta's side, go to GitHub → **Actions → Post to Instagram → Run workflow**, tick **diagnose**, and run it. It reports what Meta is allowing (token, permissions, app, account, posting quota) and posts nothing.

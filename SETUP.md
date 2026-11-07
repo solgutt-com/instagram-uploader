@@ -53,6 +53,8 @@ bash ~/Desktop/solgutt.github.io/instagram-uploader/scripts/install-watcher.sh
 Click **Allow** when macOS asks whether "Instagram Uploader" may access the Desktop folder.
 
 ## 7. Posting with the Mac off
+*Set up on Nov 7, 2026: the job is "Instagram poster" on cron-job.org, and the GitHub key is "cron-job.org poster".*
+
 [cron-job.org](https://cron-job.org) is free. It calls GitHub at your posting times and starts the posting job, so posts go out even when the Mac is off or asleep. GitHub's own timer is too unreliable for this.
 
 **a. A GitHub key that can only start the posting job.** Go to [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new):
@@ -75,10 +77,15 @@ Click **Allow** when macOS asks whether "Instagram Uploader" may access the Desk
 - **Advanced** tab:
   - Request method: **POST**
   - Headers:
-    - `Authorization` = `Bearer ` followed by the key from step a
+    - `Authorization` = `Bearer github_pat_…`: the word `Bearer`, one space, then the key from step a, with no quotes
     - `Accept` = `application/vnd.github+json`
     - `X-GitHub-Api-Version` = `2022-11-28`
   - Request body: `{"ref":"main","inputs":{"dry_run":"false"}}`
-- Save, then click **Test run**. A response of **204** means GitHub accepted it.
+- Save, then click **Test run**. A response of **204** means GitHub accepted it. The other codes mean:
+  - **401**: the `Bearer ` part or the key is wrong
+  - **403**: the key lacks *Actions: Read and write*
+  - **404**: there's a typo in the URL, or the key has no access to `instagram-uploader`
+
+**Renewing the key:** GitHub keys expire. Before it does, create a new one (step a) and paste it into the cron job's `Authorization` header. Nothing else changes.
 
 If you change `post_times` in `config.json`, change the hours here too.
