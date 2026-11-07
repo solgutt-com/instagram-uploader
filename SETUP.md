@@ -42,3 +42,43 @@ The log should say `Token OK – connected to @sol_gutt_foto` and show the capti
 
 ## If the token is ever revoked
 Generate a new one as in step 3, then update `IG_ACCESS_TOKEN`. The weekly *Refresh Instagram token* job does nothing for this kind of token, which is expected.
+
+## 6. The Mac watcher
+Run once:
+
+```bash
+bash ~/Desktop/solgutt.github.io/instagram-uploader/scripts/install-watcher.sh
+```
+
+Click **Allow** when macOS asks whether "Instagram Uploader" may access the Desktop folder.
+
+## 7. Posting with the Mac off
+[cron-job.org](https://cron-job.org) is free. It calls GitHub at your posting times and starts the posting job, so posts go out even when the Mac is off or asleep. GitHub's own timer is too unreliable for this.
+
+**a. A GitHub key that can only start the posting job.** Go to [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new):
+- Name: `cron-job.org poster`
+- Expiration: the longest allowed. Set a reminder to renew it.
+- Repository access: **Only select repositories →** `instagram-uploader`
+- Permissions → **Actions: Read and write**. Nothing else.
+- Click **Generate token** and copy it. It starts with `github_pat_`.
+
+**b. The cron job.** Sign up at cron-job.org, then go to **Cronjobs → Create cronjob**:
+- Title: `Instagram poster`
+- URL: `https://api.github.com/repos/solgutt-com/instagram-uploader/actions/workflows/post.yml/dispatches`
+- Schedule: **Custom**
+  - Days: every day
+  - Hours: `9` and `19`
+  - Minutes: `2` and `32`
+  - Time zone: `Asia/Jerusalem`
+
+  That's 4 calls a day: 2 tries per posting time. A slot that's already posted is skipped, so the extra calls are harmless.
+- **Advanced** tab:
+  - Request method: **POST**
+  - Headers:
+    - `Authorization` = `Bearer ` followed by the key from step a
+    - `Accept` = `application/vnd.github+json`
+    - `X-GitHub-Api-Version` = `2022-11-28`
+  - Request body: `{"ref":"main","inputs":{"dry_run":"false"}}`
+- Save, then click **Test run**. A response of **204** means GitHub accepted it.
+
+If you change `post_times` in `config.json`, change the hours here too.
