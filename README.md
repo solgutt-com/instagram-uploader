@@ -16,9 +16,10 @@ This is its own repository, separate from the website. The website's `.gitignore
    queue/
      Post 001/
        1 BW_2.jpg        ← slide 1 (also the grid thumbnail)
-       2 BW_3.jpg        ← slide 2
-       3 BW_5.jpg        ← slide 3
-       caption.txt
+       1 BW_2.txt        ← optional words for slide 1
+       2 BW_3.jpg  + .txt
+       3 BW_5.jpg  + .txt
+       caption.txt       ← the post's caption
      BW_NL.jpg + .txt    ← waiting for 2 more photos to make a post
    ```
 
@@ -33,6 +34,7 @@ This is its own repository, separate from the website. The website's `.gitignore
 
    A location line is added when the photo has GPS data or a location typed in Lightroom.
 3. **Optional:** open `caption.txt` and type your own words on the empty first line, or anywhere else. Whatever is in the file is the caption, exactly as written. Save the file and it syncs on its own.
+   **Per-slide words:** type them into that slide's `.txt`. They appear at the top of the caption as `1/ …`, `2/ …`, and become that slide's alt text. Instagram's API can't use the app's "multiple captions" toggle, so this is the closest it allows.
 4. Done. Check `preview.html` to see how the grid will look and when each post goes out.
 
 **After a post goes out,** its folder is deleted. `posted/log.csv` keeps the date, the file names and the link to the post.
@@ -42,7 +44,7 @@ The three hashtags in `config.json` are added automatically, 10 invisible lines 
 
 ### Changing things before they post
 - **Order of posts:** rename the folders. `Post 003` → `Post 000` posts it next.
-- **Order of slides:** rename the photos inside, e.g. swap the `1 ` and `2 ` prefixes. Slide 1 is the thumbnail in the grid.
+- **Order of slides:** change the number at the front of the photo names. Duplicates or gaps (`1, 1, 3` or `2, 3`) are fixed automatically: slides are renumbered 1, 2, 3, keeping your order. When two share a number, they're put in name order. Slide 1 is the thumbnail in the grid.
 - **Swap a photo between posts:** drag it to another folder. Keep 3 per post. A post can also have 1 photo (a single post) or up to 10.
 - **Remove a post:** delete its folder.
 
@@ -52,7 +54,8 @@ When a photo lands in `queue/`, it's replaced by an Instagram-ready copy:
 
 - Converted to sRGB and rotated upright.
 - Resized to 1440 px wide.
-- Padded with white to a 4:5 frame, never cropped. Every slide in a carousel has the same shape, because Instagram crops all slides to the shape of the first.
+- **Carousels are always 3:2 landscape.** Portrait photos get white bars at the sides; nothing is cropped. Every slide gets the same shape, because Instagram crops all slides to the first one's shape. Each slide is rebuilt from your original, so moving photos around never pads anything twice.
+- A single-photo post keeps its own shape, between 4:5 and 1.91:1.
 - **All metadata removed**, so GPS coordinates never reach GitHub.
 
 Your untouched original is kept in `originals/`. That folder stays on this Mac and is never uploaded. Delete old ones whenever you like.
@@ -73,6 +76,8 @@ When 2 or fewer posts are left, your Mac also shows a notification, at most once
 |---|---|
 | `post_times` | When to post, in 24-hour time. `["09:00", "19:00"]` = 2 posts a day = 6 photos a day. |
 | `photos_per_post` | Photos per carousel (default 3). `1` = single posts. |
+| `carousel_shape` | `"landscape"` (always 3:2), `"portrait"` (always 4:5) or `"first_photo"` (slide 1 decides). |
+| `slide_text` | What a slide's `.txt` does: `"caption_and_alt"`, `"caption_only"` or `"alt_only"`. |
 | `low_queue_posts` | Warn when this many posts or fewer are left (default 2). |
 | `hashtags` / `hashtag_gap_lines` | The automatic hashtags, and how many blank lines go above them. |
 | `caption.lines` | Which lines the auto caption has, in order. Plain text, like `"solgutt.com (link in bio)"`, goes in as written. |
