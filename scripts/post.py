@@ -32,7 +32,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from common import due_slot as _due_slot, full_caption, loose_photos, queued_posts, read_caption
+from common import due_slot as _due_slot, full_caption, loose_photos, queued_posts, read_caption, slide_texts
 
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE, POSTED = ROOT / "queue", ROOT / "posted"
@@ -206,7 +206,9 @@ def main():
     folder, images = posts[0]
     if len(images) > 10:
         die(f"'{folder.name}' has {len(images)} photos; a carousel can have at most 10.")
-    caption = full_caption(read_caption(folder), CONFIG)
+    texts = slide_texts(images) if len(images) > 1 else []
+    caption = full_caption(read_caption(folder), CONFIG, texts)
+    use_alt = CONFIG.get("slide_text", "caption_and_alt") in ("caption_and_alt", "alt_only")
     if len(caption) > 2200:
         die(f"The caption for '{folder.name}' is {len(caption)} characters; Instagram allows 2,200.")
 
@@ -218,8 +220,9 @@ def main():
             f"{urllib.parse.quote(img.relative_to(ROOT).as_posix())}" for img in images]
     kind = "carousel of " + str(len(images)) if len(images) > 1 else "single photo"
     print(f"Posting '{folder.name}' ({kind}) – {len(posts) - 1} post(s) left after this")
-    for img, url in zip(images, urls):
-        print(f"  {img.name}: {url}")
+    for i, (img, url) in enumerate(zip(images, urls)):
+        alt = texts[i] if texts and use_alt else ""
+        print(f"  {img.name}: {url}" + (f"\n      alt text: {alt}" if alt else ""))
     print(f"Caption:\n{caption}\n")
     for url in urls:
         check_public(url)
@@ -245,8 +248,9 @@ def main():
         container = api("POST", f"{user_id}/media", image_url=urls[0], caption=caption)["id"]
     else:
         children = []
-        for img, url in zip(images, urls):
-            child = api("POST", f"{user_id}/media", image_url=url, is_carousel_item="true")["id"]
+        for i, (img, url) in enumerate(zip(images, urls)):
+            extra = {"alt_text": texts[i][:1000]} if texts and use_alt and texts[i] else {}
+            child = api("POST", f"{user_id}/media", image_url=url, is_carousel_item="true", **extra)["id"]
             wait_until_ready(child, img.name)
             children.append(child)
         container = api("POST", f"{user_id}/media", media_type="CAROUSEL",

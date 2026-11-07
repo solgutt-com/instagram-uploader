@@ -4,6 +4,8 @@
   "timezone": "Asia/Jerusalem",
   "post_times": ["09:00", "19:00"],
   "photos_per_post": 3,
+  "carousel_shape": "landscape",
+  "slide_text": "caption_and_alt",
   "low_queue_posts": 2,
   "hashtags": ["#photography", "#documentaryphotography", "#travelphotography"],
   "hashtag_gap_lines": 10,

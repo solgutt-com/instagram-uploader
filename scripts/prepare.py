@@ -25,7 +25,7 @@ from pathlib import Path
 
 from PIL import Image, ImageCms, ImageOps
 
-from common import JPG, loose_photos, natural_key
+from common import JPG, loose_photos, natural_key, post_images
 
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE = ROOT / "queue"
@@ -207,31 +207,142 @@ def fit_for_instagram(img):
     return img
 
 
-def pad_to_portrait(path):
-    """Carousel slides must share one shape (Instagram crops them all to the first
-    slide's), so every slide is padded to the same 4:5 frame."""
-    cfg = CONFIG["image"]
-    with Image.open(path) as img:
+# ---------------------------------------------------------------- carousel framing
+
+def strip_prefix(name):
+    """'2 3 BW_7.jpg' -> 'BW_7.jpg' (any number of slide-number prefixes)."""
+    return re.sub(r"^(\d+ )+", "", name)
+
+
+def find_original(name):
+    stem = Path(strip_prefix(name)).stem
+    if ORIGINALS.exists():
+        for p in sorted(ORIGINALS.iterdir()):
+            if p.stem == stem:
+                return p
+    return None
+
+
+def frame_tag(path):
+    try:
+        with Image.open(path) as im:
+            m = re.search(rb"frame=([\d.]+)", im.info.get("comment", b""))
+            return float(m.group(1)) if m else None
+    except Exception:
+        return None
+
+
+def upright_source(slide):
+    """The best picture to (re)build a slide from: its original if we have it."""
+    src = find_original(slide.name) or slide
+    with Image.open(src) as img:
         img.load()
-        w, h = img.size
-        if abs(w / h - MIN_RATIO) < 0.005:
-            return
-        if w / h > MIN_RATIO:      # wider than 4:5 -> bars top and bottom
-            canvas = Image.new("RGB", (w, round(w / MIN_RATIO)), cfg.get("pad_color", "#ffffff"))
-        else:
-            canvas = Image.new("RGB", (round(h * MIN_RATIO), h), cfg.get("pad_color", "#ffffff"))
-        canvas.paste(img.convert("RGB"), ((canvas.width - w) // 2, (canvas.height - h) // 2))
+        up = ImageOps.exif_transpose(img) or img
+        return to_srgb(up)
+
+
+def render_slide(slide, ratio):
+    """Pad (never crop) the slide's picture into a frame of `ratio`, max 1440 px wide."""
+    cfg = CONFIG["image"]
+    img = upright_source(slide)
+    w, h = img.size
+    if w / h > ratio + 0.003:      # wider than the frame -> bars top and bottom
+        canvas = Image.new("RGB", (w, round(w / ratio)), cfg.get("pad_color", "#ffffff"))
+    elif w / h < ratio - 0.003:    # taller -> bars at the sides
+        canvas = Image.new("RGB", (round(h * ratio), h), cfg.get("pad_color", "#ffffff"))
+    else:
+        canvas = img
+    if canvas is not img:
+        canvas.paste(img, ((canvas.width - w) // 2, (canvas.height - h) // 2))
     max_w = cfg.get("max_width", 1440)
     if canvas.width > max_w:
         canvas = canvas.resize((max_w, round(canvas.height * max_w / canvas.width)), Image.LANCZOS)
-    canvas.save(path, "JPEG", quality=cfg.get("jpeg_quality", 92), optimize=True,
-                progressive=True, comment=MARKER)
+    canvas.save(slide, "JPEG", quality=cfg.get("jpeg_quality", 92), optimize=True,
+                progressive=True, comment=MARKER + f";frame={ratio:.3f}".encode())
+
+
+def post_ratio(slides):
+    """Instagram gives every slide the shape of the first, so the whole post gets one frame."""
+    with Image.open(find_original(slides[0].name) or slides[0]) as im:
+        w, h = (ImageOps.exif_transpose(im) or im).size
+    own = min(max(w / h, MIN_RATIO), MAX_RATIO)
+    shape = CONFIG.get("carousel_shape", "first_photo")
+    if len(slides) == 1 or shape == "first_photo":
+        return round(own, 3)
+    if shape == "portrait":
+        return MIN_RATIO
+    return round(own if own > 1 else 1.5, 3)   # "landscape"
+
+
+def tidy_post(folder):
+    """Number the slides 1, 2, 3 …, give each its own text file, make sure the post
+    has a caption, and give every slide the post's frame."""
+    slides = post_images(folder)
+    if not slides:
+        return
+    # 1. slide numbers: keep your order (by the first number in each name), fix
+    #    duplicates, gaps and doubled prefixes
+    def order(p):
+        m = re.match(r"^(\d+) ", p.name)
+        return (int(m.group(1)) if m else 10**6, natural_key(strip_prefix(p.name)))
+    slides.sort(key=order)
+    renames = []
+    for i, p in enumerate(slides, 1):
+        want = folder / f"{i} {strip_prefix(p.name)}"
+        if p.name != want.name:
+            renames.append((p, want))
+    # two steps, so renames can't collide (e.g. two files both called "1 …")
+    temp = []
+    for p, want in renames:
+        t = p.with_name(f".renaming-{want.name}")
+        p.rename(t)
+        old_txt = p.with_suffix(".txt")
+        if old_txt.exists():
+            old_txt.rename(t.with_suffix(".txt"))
+        temp.append((t, want))
+    for t, want in temp:
+        t.rename(want)
+        if t.with_suffix(".txt").exists():
+            t.with_suffix(".txt").rename(want.with_suffix(".txt"))
+    if renames:
+        log(f"{folder.name}: renumbered slides " + ", ".join(w.name for _, w in renames))
+    slides = post_images(folder)
+
+    # 2. a text file per slide, for its own caption line and alt text
+    if len(slides) > 1:
+        for p in slides:
+            t = p.with_suffix(".txt")
+            if not t.exists():
+                t.write_text("", encoding="utf-8")
+    # stray text files of slides that left this folder
+    names = {p.stem for p in slides}
+    for t in folder.glob("*.txt"):
+        if t.name != "caption.txt" and t.stem not in names and not t.read_text(encoding="utf-8").strip():
+            t.unlink()
+
+    # 3. post caption from slide 1's details, if there is none yet
+    cap = folder / "caption.txt"
+    if not cap.exists() or not cap.read_text(encoding="utf-8").strip():
+        src = find_original(slides[0].name) or slides[0]
+        with Image.open(src) as img:
+            img.load()
+            meta = read_metadata(src, img)
+        cap.write_text("\n" + build_caption(meta) + "\n", encoding="utf-8")
+        log(f"{folder.name}: wrote caption.txt from slide 1")
+
+    # 4. one frame for the whole post
+    ratio = post_ratio(slides)
+    for p in slides:
+        tag = frame_tag(p)
+        if tag is None or abs(tag - ratio) > 0.002:
+            render_slide(p, ratio)
+            log(f"{folder.name}: {p.name} framed at {'landscape' if ratio > 1 else 'square' if ratio == 1 else 'portrait'} {ratio:.2f}:1")
 
 
 def is_prepared(path):
     try:
         with Image.open(path) as im:
-            return im.info.get("comment", b"") == MARKER
+            return im.info.get("comment", b"").startswith(MARKER)
     except Exception:
         return False
 
@@ -263,8 +374,6 @@ def prepare(path, write_caption=True):
     dest = path.with_suffix(".jpg")
     out.save(dest, "JPEG", quality=CONFIG["image"].get("jpeg_quality", 92),
              optimize=True, progressive=True, comment=MARKER)
-    if not write_caption:              # dropped into a post folder: it's a carousel slide
-        pad_to_portrait(dest)
     log(f"  ready: {dest.name} ({out.width}×{out.height})")
 
 
@@ -301,8 +410,6 @@ def group_into_posts():
             dest = folder / f"{i} {p.name}"
             p.rename(dest)
             p.with_suffix(".txt").unlink(missing_ok=True)
-            if per_post > 1:
-                pad_to_portrait(dest)
         log(f"Grouped into {folder.name}: " + ", ".join(p.name for p in group))
     if loose:
         log(f"{len(loose)} photo(s) waiting for {per_post - len(loose)} more to make a post")
@@ -331,6 +438,12 @@ def main():
             log(f"  could not prepare {path.name}: {e}")
     if not pending:
         group_into_posts()
+        for d in sorted(QUEUE.iterdir()):
+            if d.is_dir() and not d.name.startswith("."):
+                try:
+                    tidy_post(d)
+                except Exception as e:
+                    log(f"  could not tidy {d.name}: {e}")
     return 3 if pending else 0
 
 

@@ -52,8 +52,22 @@ def read_caption(folder):
     return f.read_text(encoding="utf-8").strip() if f else ""
 
 
-def full_caption(text, config):
-    """The caption exactly as it's posted: your text, then hashtags far below it."""
+def slide_texts(images):
+    """What you wrote for each slide in its own .txt ('' when nothing)."""
+    out = []
+    for img in images:
+        t = img.with_suffix(".txt")
+        out.append(" ".join(t.read_text(encoding="utf-8").split()) if t.exists() else "")
+    return out
+
+
+def full_caption(text, config, slides=None):
+    """The caption exactly as it's posted: per-slide lines (1/ … 2/ …), your
+    caption, then the hashtags far below it."""
+    slides = slides or []
+    if any(slides) and config.get("slide_text", "caption_and_alt") in ("caption_and_alt", "caption_only"):
+        block = "\n".join(f"{i}/ {t}" for i, t in enumerate(slides, 1) if t)
+        text = block + ("\n" + SPACER + "\n" + text if text else "")
     tags = config.get("hashtags", [])
     if not tags or "#" in text:          # you wrote your own hashtags: leave them alone
         return text

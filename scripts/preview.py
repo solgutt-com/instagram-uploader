@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageOps
 
-from common import full_caption, loose_photos, queued_posts, read_caption, upcoming_slots
+from common import full_caption, loose_photos, queued_posts, read_caption, slide_texts, upcoming_slots
 
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE, ORIGINALS, POSTED = ROOT / "queue", ROOT / "originals", ROOT / "posted"
@@ -31,6 +31,10 @@ def key_for(name):
 
 def thumb(src, key):
     CACHE.mkdir(parents=True, exist_ok=True)
+    if src and src.exists() and src.parent != ORIGINALS:
+        out = CACHE / f"{key}.jpg"
+        if out.exists() and out.stat().st_mtime < src.stat().st_mtime:
+            out.unlink()                      # the slide was re-framed: make a fresh one
     out = CACHE / f"{key}.jpg"
     if not out.exists() and src and src.exists():
         try:
@@ -70,8 +74,12 @@ def build():
     upcoming = []
     for (folder, imgs), when in zip(posts, slots):
         thumbs = [thumb(i, key_for(i.name)) for i in imgs]
+        texts = slide_texts(imgs) if len(imgs) > 1 else []
+        with Image.open(imgs[0]) as im:
+            ratio = im.width / im.height
         upcoming.append({"name": folder.name, "when": when, "thumbs": thumbs, "count": len(imgs),
-                         "caption": full_caption(read_caption(folder), CONFIG)})
+                         "ratio": ratio, "texts": texts,
+                         "caption": full_caption(read_caption(folder), CONFIG, texts)})
 
     posted = []
     log = POSTED / "log.csv"
@@ -114,7 +122,11 @@ def build():
 
     rows = []
     for u in upcoming:
-        pics = "".join(f'<img src="{src_url(t)}" alt="">' for t in u["thumbs"] if t)
+        pics = "".join(
+            f'<figure><img src="{src_url(t)}" alt="" style="aspect-ratio:{u["ratio"]:.3f}">'
+            + (f'<figcaption>{i}/ {e(u["texts"][i-1])}</figcaption>' if u["texts"] and u["texts"][i-1] else "")
+            + "</figure>"
+            for i, t in enumerate(u["thumbs"], 1) if t)
         rows.append(f"""
       <article class="post">
         <header><b>{e(fmt(u["when"]))}</b><span>{e(u["name"])} · {u["count"]} photo{'s' if u["count"] != 1 else ''}</span></header>
@@ -131,7 +143,7 @@ def build():
                        f' – the feed goes quiet{when}. Drop at least {per_post} more photos into <code>queue/</code>.</div>')
     if waiting:
         need = per_post - len(waiting) % per_post
-        pics = "".join(f'<img src="{src_url(t)}" alt="">' for t in waiting_thumbs if t)
+        pics = "".join(f'<figure><img src="{src_url(t)}" alt=""></figure>' for t in waiting_thumbs if t)
         banners.append(f'<div class="banner info"><b>{len(waiting)} photo{"s" if len(waiting) != 1 else ""} waiting</b>'
                        f' – add {need} more to make the next post.<div class="pics small">{pics}</div></div>')
 
@@ -173,7 +185,9 @@ h2 {{ font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(
 .post header {{ display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px; }}
 .post header span {{ color:var(--muted); }}
 .pics {{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }}
+.pics figure {{ margin:0; }}
 .pics img {{ width:100%; aspect-ratio:4/5; object-fit:contain; background:var(--bg); border-radius:6px; display:block; }}
+.pics figcaption {{ font-size:13px; color:var(--muted); margin-top:4px; }}
 .pics.small {{ grid-template-columns:repeat(6,1fr); margin-top:10px; }}
 .cap {{ white-space:pre-wrap; font:inherit; margin:12px 0 0; max-height:none; }}
 .empty {{ color:var(--muted); }}
