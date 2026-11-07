@@ -15,7 +15,7 @@ This is its own repository, separate from the website. The website's `.gitignore
 
    May 23, 2026 · 10:17 AM
    Canon EOS 7D · 40mm · f/4.5 · 1/80s · ISO 160
-   solgutt.com
+   solgutt.com (link in bio)
    ```
 
    A location line is added when the photo has GPS data or a location typed in Lightroom.

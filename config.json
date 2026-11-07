@@ -5,7 +5,7 @@
   "post_times": ["09:00", "19:00"],
 
   "caption": {
-    "lines": ["{date}", "{location}", "{camera}", "solgutt.com"],
+    "lines": ["{date}", "{location}", "{camera}", "solgutt.com (link in bio)"],
     "date_format": "%B %-d, %Y · %-I:%M %p",
     "camera_format": "{model} · {focal} · {aperture} · {shutter} · ISO {iso}",
     "location_lookup": true
