@@ -5,7 +5,7 @@ Runs on GitHub Actions. Uses only the Python standard library.
 
 A "slot" is one of config.json's post_times on today's date. If a slot has
 passed and hasn't been used yet, the first post folder in queue/ (Finder
-order) is posted: one photo = a single post, 2–10 photos = a carousel, with
+order) is posted: one photo = a single post, 2–5 photos = a carousel, with
 its caption.txt plus the hashtags from config.json. The folder is then
 deleted and the post recorded in posted/log.csv. At most one post per run,
 so a missed slot never causes a burst.
@@ -201,7 +201,7 @@ def main():
     if not posts:
         waiting = len(loose_photos(QUEUE))
         print("::warning::Queue is empty – nothing to post."
-              + (f" {waiting} photo(s) are waiting for a full post." if waiting else ""))
+              + (f" {waiting} photo(s) are still being prepared on the Mac." if waiting else ""))
         return
     folder, images = posts[0]
     if len(images) > 10:

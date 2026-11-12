@@ -5,7 +5,7 @@ Queue layout:
     queue/Post 001/2 IMG_0002.jpg        (a carousel when it has 2+ photos)
     queue/Post 001/3 IMG_0003.jpg
     queue/Post 001/caption.txt
-    queue/IMG_0004.jpg + .txt         <- loose photos waiting to fill a post
+    queue/IMG_0004.jpg + .txt         <- just dropped: gets its own post folder
 Posts go out in Finder's order (natural sort: "Post 2" before "Post 10").
 """
 import re

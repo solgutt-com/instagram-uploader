@@ -279,6 +279,9 @@ def tidy_post(folder):
     has a caption, and give every slide the post's frame."""
     slides = post_images(folder)
     if not slides:
+        if is_leftover(folder):
+            shutil.rmtree(folder)
+            log(f"{folder.name}: removed (its photos were moved to other posts)")
         return
     # 1. slide numbers: keep your order (by the first number in each name), fix
     #    duplicates, gaps and doubled prefixes
@@ -286,6 +289,20 @@ def tidy_post(folder):
         m = re.match(r"^(\d+) ", p.name)
         return (int(m.group(1)) if m else 10**6, natural_key(strip_prefix(p.name)))
     slides.sort(key=order)
+    # more than the maximum: the extra slides become the next post, "Post 012 (2)"
+    most = int(CONFIG.get("max_photos_per_post", 5))
+    if len(slides) > most:
+        n = 2
+        while (extra := folder.with_name(f"{folder.name} ({n})")).exists():
+            n += 1
+        extra.mkdir()
+        for p in slides[most:]:
+            if p.with_suffix(".txt").exists():
+                p.with_suffix(".txt").rename(extra / p.with_suffix(".txt").name)
+            p.rename(extra / p.name)
+        log(f"{folder.name}: more than {most} photos, moved {len(slides) - most} to {extra.name}")
+        slides = slides[:most]
+        tidy_post(extra)
     renames = []
     for i, p in enumerate(slides, 1):
         want = folder / f"{i} {strip_prefix(p.name)}"
@@ -386,42 +403,36 @@ def prepare(path, write_caption=True):
     log(f"  ready: {dest.name} ({out.width}×{out.height})")
 
 
-# lines the uploader writes itself (date, camera, website, hashtags, spacers)
-AUTO_LINE = re.compile(r"^([A-Z][a-z]+ \d{1,2}, \d{4}.*|.*\s·\s.*|solgutt\.com.*|#.*|\u2800*)$")
-
-
 def group_into_posts():
-    """Bundle loose, prepared photos into post folders of `photos_per_post`."""
-    per_post = max(1, int(CONFIG.get("photos_per_post", 3)))
-    loose = [p for p in loose_photos(QUEUE) if is_prepared(p)]
+    """Every loose, prepared photo gets its own post folder. Drag photos between
+    folders to make carousels."""
     numbers = [int(m.group(1)) for d in QUEUE.iterdir()
                if d.is_dir() and (m := re.match(r"Post (\d+)$", d.name))]
     nxt = max(numbers, default=0) + 1
-    while len(loose) >= per_post:
-        group, loose = loose[:per_post], loose[per_post:]
+    for p in loose_photos(QUEUE):
+        if not is_prepared(p):
+            continue
         folder = QUEUE / f"Post {nxt:03d}"
         nxt += 1
         folder.mkdir()
-        texts = [(p.with_suffix(".txt").read_text(encoding="utf-8")
-                  if p.with_suffix(".txt").exists() else "") for p in group]
-        caption = texts[0].rstrip()
-        # keep anything you typed into the other photos' captions
-        extra = []
-        for t in texts[1:]:
-            for line in t.splitlines():
-                line = line.strip()
-                if line and not AUTO_LINE.match(line) and line not in caption and line not in extra:
-                    extra.append(line)
-        if extra:
-            caption = "\n".join(extra) + "\n" + caption.lstrip("\n")
-        (folder / "caption.txt").write_text(caption + "\n", encoding="utf-8")
-        for i, p in enumerate(group, 1):
-            dest = folder / f"{i} {p.name}"
-            p.rename(dest)
-            p.with_suffix(".txt").unlink(missing_ok=True)
-        log(f"Grouped into {folder.name}: " + ", ".join(p.name for p in group))
-    if loose:
-        log(f"{len(loose)} photo(s) waiting for {per_post - len(loose)} more to make a post")
+        if p.with_suffix(".txt").exists():
+            p.with_suffix(".txt").rename(folder / "caption.txt")
+        p.rename(folder / f"1 {p.name}")
+        log(f"{folder.name}: new post with {p.name}")
+
+
+def is_leftover(folder):
+    """A post folder whose photos were all dragged elsewhere, with nothing you typed in it."""
+    born = folder.stat().st_birthtime
+    for f in folder.iterdir():
+        if f.name == ".DS_Store":
+            continue
+        if f.name == "caption.txt" and f.stat().st_mtime <= born:   # the auto caption, never edited
+            continue
+        if f.suffix.lower() == ".txt" and not f.read_text(encoding="utf-8").strip():
+            continue
+        return False
+    return True
 
 
 def main():

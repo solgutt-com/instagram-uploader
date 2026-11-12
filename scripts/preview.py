@@ -67,7 +67,6 @@ def build():
     tz = ZoneInfo(CONFIG["timezone"])
     now = datetime.now(tz)
     state = json.loads((ROOT / "state.json").read_text()) if (ROOT / "state.json").exists() else {}
-    per_post = int(CONFIG.get("photos_per_post", 3))
 
     posts = queued_posts(QUEUE)
     slots = upcoming_slots(now, state, CONFIG, len(posts))
@@ -140,12 +139,11 @@ def build():
     if low:
         when = f" after {e(fmt(runs_out))}" if runs_out else ""
         banners.append(f'<div class="banner warn"><b>Running low:</b> {left} post{"s" if left != 1 else ""} left'
-                       f' – the feed goes quiet{when}. Drop at least {per_post} more photos into <code>queue/</code>.</div>')
+                       f' – the feed goes quiet{when}. Drop more photos into <code>queue/</code>.</div>')
     if waiting:
-        need = per_post - len(waiting) % per_post
         pics = "".join(f'<figure><img src="{src_url(t)}" alt=""></figure>' for t in waiting_thumbs if t)
         banners.append(f'<div class="banner info"><b>{len(waiting)} photo{"s" if len(waiting) != 1 else ""} waiting</b>'
-                       f' – add {need} more to make the next post.<div class="pics small">{pics}</div></div>')
+                       f' – being prepared, each becomes its own post.<div class="pics small">{pics}</div></div>')
 
     until = f"runs until {e(fmt(runs_out))}" if runs_out else "queue empty"
     page = f"""<!doctype html>

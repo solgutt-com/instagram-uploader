@@ -1,6 +1,6 @@
 # Instagram uploader
 
-Drop photos in a folder and they go out on **@sol_gutt_foto** by themselves: carousels of 3 photos, at 09:00 and 19:00.
+Drop photos in a folder and they go out on **@sol_gutt_foto** by themselves at 09:00 and 19:00: single photos or carousels of up to 5.
 
 **The folder:** `~/Desktop/solgutt.github.io/instagram-uploader/queue/`
 **The preview:** open `instagram-uploader/preview.html` in your browser.
@@ -10,7 +10,8 @@ This is its own repository, separate from the website. The website's `.gitignore
 ## Day to day
 
 1. **Drop photos into `queue/`.** Use finished exports, any size, JPEG/PNG/TIFF.
-2. **Wait a few seconds.** Every 3 photos are bundled into a post folder in the order Finder shows them:
+2. **Wait a few seconds.** Each photo gets its own post folder, numbered in the order Finder shows them. Left alone, every photo is a single post.
+3. **To make a carousel, drag photos into one folder.** A post can have 1 to 5 photos:
 
    ```
    queue/
@@ -20,10 +21,14 @@ This is its own repository, separate from the website. The website's `.gitignore
        2 BW_3.jpg  + .txt
        3 BW_5.jpg  + .txt
        caption.txt       ← the post's caption
-     BW_NL.jpg + .txt    ← waiting for 2 more photos to make a post
+     Post 004/
+       1 BW_NL.jpg       ← a single post
+       caption.txt
    ```
 
-   `caption.txt` is written from the first photo:
+   The folders you emptied are removed automatically, unless you typed something into their `caption.txt`. If a folder ends up with more than 5 photos, the extras move into a new post right after it, e.g. `Post 001 (2)`.
+
+   Each `caption.txt` is written from that post's first photo:
 
    ```
 
@@ -33,9 +38,9 @@ This is its own repository, separate from the website. The website's `.gitignore
    ```
 
    A location line is added when the photo has GPS data or a location typed in Lightroom.
-3. **Optional:** open `caption.txt` and type your own words on the empty first line, or anywhere else. Whatever is in the file is the caption, exactly as written. Save the file and it syncs on its own.
+4. **Optional:** open `caption.txt` and type your own words on the empty first line, or anywhere else. Whatever is in the file is the caption, exactly as written. Save the file and it syncs on its own.
    **Per-slide words:** type them into that slide's `.txt`. They appear at the top of the caption as `1/ …`, `2/ …`, and become that slide's alt text. Instagram's API can't use the app's "multiple captions" toggle, so this is the closest it allows.
-4. Done. Check `preview.html` to see how the grid will look and when each post goes out.
+5. Done. Check `preview.html` to see how the grid will look and when each post goes out.
 
 **After a post goes out,** its folder is deleted. `posted/log.csv` keeps the date, the file names and the link to the post.
 
@@ -45,7 +50,7 @@ The three hashtags in `config.json` are added automatically, 10 invisible lines 
 ### Changing things before they post
 - **Order of posts:** rename the folders. `Post 003` → `Post 000` posts it next.
 - **Order of slides:** change the number at the front of the photo names. Duplicates or gaps (`1, 1, 3` or `2, 3`) are fixed automatically: slides are renumbered 1, 2, 3, keeping your order. When two share a number, they're put in name order. Slide 1 is the thumbnail in the grid.
-- **Swap a photo between posts:** drag it to another folder. Keep 3 per post. A post can also have 1 photo (a single post) or up to 10.
+- **Move a photo between posts:** drag it to another folder. 1 to 5 photos per post.
 - **Remove a post:** delete its folder.
 
 ## What happens to each photo
@@ -67,7 +72,7 @@ Your untouched original is kept in `originals/`. That folder stays on this Mac a
 
 - **Grid:** how your profile will look once the queued posts are out. Scheduled tiles show their posting time; faded tiles are already posted.
 - **Schedule:** each post in order, with its time, all its slides and the exact caption.
-- **Warnings:** a banner shows when the queue is running low, and when photos are waiting for a full post.
+- **Warnings:** a banner shows when the queue is running low, and when photos are still being prepared.
 
 When 2 or fewer posts are left, your Mac also shows a notification, at most once a day.
 
@@ -76,7 +81,7 @@ When 2 or fewer posts are left, your Mac also shows a notification, at most once
 | Setting | What it does |
 |---|---|
 | `post_times` | When to post, in 24-hour time. `["09:00", "19:00"]` = 2 posts a day = 6 photos a day. |
-| `photos_per_post` | Photos per carousel (default 3). `1` = single posts. |
+| `max_photos_per_post` | Most photos in one post (default 5). Extras move to a new post. |
 | `carousel_shape` | `"landscape"` (always 3:2), `"portrait"` (always 4:5) or `"first_photo"` (slide 1 decides). |
 | `slide_text` | What a slide's `.txt` does: `"caption_and_alt"`, `"caption_only"` or `"alt_only"`. |
 | `low_queue_posts` | Warn when this many posts or fewer are left (default 2). |
